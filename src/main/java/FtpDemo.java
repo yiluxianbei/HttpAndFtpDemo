@@ -39,7 +39,7 @@ public class FtpDemo {
 
     public static void main(String[] args) throws IOException, FtpProtocolException {
         FtpClient ftpClient = connectServer("47.103.80.115", 21, "Maohd", "Mhd!@#test");
-        File file = new File("D:\\data\\applogs\\xxl-job");
+        File file = new File("D:\\CEB512Message-20210303105804672575570.xml");
         uploadFile(ftpClient,"/tosend/",file);
         ftpClient.close();
     }
