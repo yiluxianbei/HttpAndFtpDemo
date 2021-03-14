@@ -1,7 +1,7 @@
+import response.DownloadResponse;
+
 import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
+import java.net.*;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -113,9 +113,9 @@ public class HttpUtil {
         }
 
         // headers
-        if (headers != null) {
+        if (headers != null && headers.size()>0) {
             for (String key : headers.keySet()) {
-                conn.addRequestProperty(key, headers.get(key));
+                conn.setRequestProperty(key, headers.get(key));
             }
         }
 
@@ -129,25 +129,173 @@ public class HttpUtil {
         }
 
         // response
-        InputStream is = conn.getInputStream();
-        StringBuffer out = new StringBuffer();
-
-        BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-        String line;
-        while ((line = br.readLine()) != null) {
-            out.append(line);
-        }
+                InputStream is = conn.getInputStream();
+                StringBuffer out = new StringBuffer();
+                BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                String line;
+                while ((line = br.readLine()) != null) {
+                    out.append(line);
+                }
 
         String response = out.toString();
-        is.close();
+                is.close();
 
         // handle redirects
         if (conn.getResponseCode() == 301) {
             String location = conn.getHeaderField("Location");
             return fetch(method, location, body, headers);
         }
-
         return response;
+    }
+
+    /**
+     *下载文件
+     * @param url
+     * @param headers 请求头
+     * @return
+     */
+    public static DownloadResponse download(String url, Map<String,String> headers){
+        DownloadResponse downloadResponse = new DownloadResponse();
+        try {
+            URL urlObj = new URL(url);
+            HttpURLConnection conn = (HttpURLConnection)urlObj.openConnection();
+            conn.setRequestMethod("GET");
+            //设置超时间为3秒
+            conn.setConnectTimeout(3*1000);
+            conn.setReadTimeout(3*1000);
+            //防止屏蔽程序抓取而返回403错误
+            conn.setRequestProperty("User-Agent", "Mozilla/4.0 (compatible; MSIE 5.0; Windows NT; DigExt)");
+            if (headers != null && headers.size() > 0) {
+                for (Map.Entry<String, String> entry : headers.entrySet()) {
+                    conn.setRequestProperty(entry.getKey(), entry.getValue());
+                }
+            }
+            if (HttpURLConnection.HTTP_OK == conn.getResponseCode()) {
+                //得到输入流
+                downloadResponse.setInputStream(conn.getInputStream());
+                String headerField = conn.getHeaderField("Content-Disposition");
+                headerField = headerField.substring(headerField.indexOf("fileName=")+9);
+                String fileName = headerField.substring(0, headerField.indexOf(";"));
+                downloadResponse.setFileName(URLDecoder.decode(fileName,"UTF-8"));
+            }
+        } catch (MalformedURLException e ) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return downloadResponse;
+    }
+
+
+    /**
+     * 实现参数传输以及文件传输
+     * @param actionUrl 访问的服务器URL
+     * @param headers 请求头
+     * @param params 普通参数
+     * @param fileNameAndStream map<文件名，对应的流>
+     * @return
+     * @throws IOException
+     */
+    public static String uploadWithParms(String actionUrl,Map<String,String> headers, Map<String, String> params,Map<String,InputStream> fileNameAndStream ) {
+        //http协议的分隔符
+        String BOUNDARY = String.valueOf(System.currentTimeMillis());
+        String PREFIX = "--";
+        DataOutputStream outStream = null;
+        BufferedReader responseReader = null;
+        String result = "";
+        try {
+            URL uri = new URL(actionUrl);
+            HttpURLConnection conn = (HttpURLConnection) uri.openConnection();
+            conn.setConnectTimeout(30000);
+            conn.setReadTimeout(30000);
+            conn.setDoInput(true);// 允许输入
+            conn.setDoOutput(true);// 允许输出
+            conn.setUseCaches(false); // 不允许使用缓存
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("connection", "keep-alive");
+            conn.setRequestProperty("Charsert", "UTF-8");
+            conn.setRequestProperty("Content-Type", "multipart/form-data" + ";boundary=" + BOUNDARY);
+            if (headers != null && headers.size() > 0) {
+                for (Map.Entry<String, String> entry : headers.entrySet()) {
+                    conn.setRequestProperty(entry.getKey(), entry.getValue());
+                }
+            }
+            outStream = new DataOutputStream(conn.getOutputStream());
+            // 首先组拼文本类型的参数
+            if (params != null && params.size() > 0) {
+                StringBuilder param = new StringBuilder();
+                for (Map.Entry<String, String> entry : params.entrySet()) {
+                    param.append(PREFIX);
+                    param.append(BOUNDARY);
+                    param.append("\r\n");
+                    param.append("Content-Disposition: form-data; name=\"" + entry.getKey() + "\"\r\n");
+                    param.append("Content-Type: text/plain; charset=" + "UTF-8" + "\r\n");
+                    param.append("Content-Transfer-Encoding: 8bit\r\n");
+                    param.append("\r\n");
+                    param.append(entry.getValue());
+                    param.append("\r\n");
+                }
+
+                outStream.write(param.toString().getBytes());
+            }
+
+
+            // 发送文件数据
+            for (Map.Entry<String, InputStream> entry : fileNameAndStream.entrySet()) {
+                StringBuilder sb = new StringBuilder();
+                sb.append(PREFIX);
+                sb.append(BOUNDARY);
+                sb.append("\r\n");
+                sb.append("Content-Disposition: form-data; name=\"file\"; filename=\"" + entry.getKey() + "\"\r\n");
+                sb.append("Content-Type: application/octet-stream; charset=" + "UTF-8" + "\r\n");
+                sb.append("\r\n");
+                outStream.write(sb.toString().getBytes());
+
+                InputStream is = entry.getValue();
+                byte[] buffer = new byte[1024 * 3];
+                int len = 0;
+                while ((len = is.read(buffer)) != -1) {
+                    outStream.write(buffer, 0, len);
+                }
+                is.close();
+                outStream.write("\r\n".getBytes());
+            }
+            //请求结束标志
+            outStream.write((PREFIX + BOUNDARY + PREFIX + "\r\n").getBytes());
+            outStream.flush();
+            int responseCode = conn.getResponseCode();
+            if (HttpURLConnection.HTTP_OK == responseCode) {
+                StringBuffer response = new StringBuffer();
+                String readLine;
+                responseReader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                while ((readLine = responseReader.readLine()) != null) {
+                    response.append(readLine).append("\n");
+                }
+                result = response.toString();
+            } else {
+                result = String.valueOf(responseCode);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (outStream != null) {
+                try {
+                    outStream.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } finally {
+                    if (responseReader != null) {
+                        try {
+                            responseReader.close();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+
+            }
+        }
+        return result;
     }
 
 }
