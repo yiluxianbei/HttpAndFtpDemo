@@ -1,8 +1,8 @@
 import response.DownloadResponse;
-
 import java.io.*;
 import java.net.*;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class HttpUtil {
@@ -14,7 +14,7 @@ public class HttpUtil {
      * @return response
      * @throws IOException
      */
-    public static String get(String url,Map<String, String> headers) throws IOException {
+    public static String get(String url, Map<String, String> headers) {
         return fetch("GET", url, null, headers);
     }
 
@@ -26,7 +26,7 @@ public class HttpUtil {
      * @return response   Response as string
      * @throws IOException
      */
-    public static String postJson(String url, String body,Map<String, String> headers) throws IOException {
+    public static String postJson(String url, String body, Map<String, String> headers) throws IOException {
         if (headers == null) {
             headers = new HashMap<>();
         }
@@ -43,7 +43,7 @@ public class HttpUtil {
      * @return response   Response as string
      * @throws IOException
      */
-    public static String postForm(String url, Map<String, String> params,Map<String, String> headers) throws IOException {
+    public static String postForm(String url, Map<String, String> params, Map<String, String> headers) throws IOException {
         if (headers == null) {
             headers = new HashMap<>();
         }
@@ -74,7 +74,7 @@ public class HttpUtil {
      * @return response   Response as string
      * @throws IOException
      */
-    public static String put(String url, String body,Map<String, String> headers) throws IOException {
+    public static String put(String url, String body, Map<String, String> headers) throws IOException {
         return fetch("PUT", url, body, headers);
     }
 
@@ -100,35 +100,39 @@ public class HttpUtil {
      * @return response   Response as string
      * @throws IOException
      */
-    public static String fetch(String method, String url, String body, Map<String, String> headers) throws IOException {
+    public static String fetch(String method, String url, String body, Map<String, String> headers) {
+        String response = null;
         // connection
-        URL u = new URL(url);
-        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-        conn.setConnectTimeout(100000);
-        conn.setReadTimeout(300000);
+        try {
+            URL u = new URL(url);
+            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+            conn.setConnectTimeout(100000);
+            conn.setReadTimeout(300000);
+            conn.setRequestProperty("Accept", "*/*");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36");
 
-        // method
-        if (method != null) {
-            conn.setRequestMethod(method);
-        }
-
-        // headers
-        if (headers != null && headers.size()>0) {
-            for (String key : headers.keySet()) {
-                conn.setRequestProperty(key, headers.get(key));
+            // method
+            if (method != null) {
+                conn.setRequestMethod(method);
             }
-        }
 
-        // body
-        if (body != null) {
-            conn.setDoOutput(true);
-            OutputStream os = conn.getOutputStream();
-            os.write(body.getBytes());
-            os.flush();
-            os.close();
-        }
+            // headers
+            if (headers != null && headers.size() > 0) {
+                for (String key : headers.keySet()) {
+                    conn.setRequestProperty(key, headers.get(key));
+                }
+            }
 
-        // response
+            // body
+            if (body != null) {
+                conn.setDoOutput(true);
+                OutputStream os = conn.getOutputStream();
+                os.write(body.getBytes());
+                os.flush();
+                os.close();
+            }
+
+            if (200 == conn.getResponseCode()) {
                 InputStream is = conn.getInputStream();
                 StringBuffer out = new StringBuffer();
                 BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
@@ -137,48 +141,71 @@ public class HttpUtil {
                     out.append(line);
                 }
 
-        String response = out.toString();
+                response = out.toString();
                 is.close();
-
-        // handle redirects
-        if (conn.getResponseCode() == 301) {
-            String location = conn.getHeaderField("Location");
-            return fetch(method, location, body, headers);
+            } else if (conn.getResponseCode() == 301) {
+                // handle redirects
+                String location = conn.getHeaderField("Location");
+                return fetch(method, location, body, headers);
+            } else {
+                InputStream is = conn.getErrorStream();
+                StringBuffer out = new StringBuffer();
+                BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                String line;
+                while ((line = br.readLine()) != null) {
+                    out.append(line);
+                }
+                response = out.toString();
+                is.close();
+                throw new RuntimeException("请求接口失败，失败信息:" + response);
+            }
+        } catch (MalformedURLException | ProtocolException e) {
+            e.printStackTrace();
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+
         return response;
     }
 
     /**
-     *下载文件
+     * 下载文件
+     *
      * @param url
      * @param headers 请求头
      * @return
      */
-    public static DownloadResponse download(String url, Map<String,String> headers){
+    public static DownloadResponse download(String url, Map<String, String> headers) {
         DownloadResponse downloadResponse = new DownloadResponse();
         try {
             URL urlObj = new URL(url);
-            HttpURLConnection conn = (HttpURLConnection)urlObj.openConnection();
+            HttpURLConnection conn = (HttpURLConnection) urlObj.openConnection();
             conn.setRequestMethod("GET");
             //设置超时间为3秒
-            conn.setConnectTimeout(3*1000);
-            conn.setReadTimeout(3*1000);
+            conn.setConnectTimeout(3 * 1000);
+            conn.setReadTimeout(3 * 1000);
             //防止屏蔽程序抓取而返回403错误
-            conn.setRequestProperty("User-Agent", "Mozilla/4.0 (compatible; MSIE 5.0; Windows NT; DigExt)");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36");
             if (headers != null && headers.size() > 0) {
                 for (Map.Entry<String, String> entry : headers.entrySet()) {
                     conn.setRequestProperty(entry.getKey(), entry.getValue());
                 }
             }
             if (HttpURLConnection.HTTP_OK == conn.getResponseCode()) {
-                //得到输入流
+                Map<String, List<String>> headerFields = conn.getHeaderFields();
+                for (Map.Entry<String, List<String>> entry : headerFields.entrySet()) {
+                    System.out.println(entry.getKey() + "======" + entry.getValue());
+                }
                 downloadResponse.setInputStream(conn.getInputStream());
+                //文件名
                 String headerField = conn.getHeaderField("Content-Disposition");
-                headerField = headerField.substring(headerField.indexOf("fileName=")+9);
+                headerField = headerField.substring(headerField.indexOf("filename=") + 9);
                 String fileName = headerField.substring(0, headerField.indexOf(";"));
-                downloadResponse.setFileName(URLDecoder.decode(fileName,"UTF-8"));
+                downloadResponse.setFileName(URLDecoder.decode(fileName, "UTF-8"));
             }
-        } catch (MalformedURLException e ) {
+        } catch (MalformedURLException e) {
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
@@ -189,14 +216,15 @@ public class HttpUtil {
 
     /**
      * 实现参数传输以及文件传输
-     * @param actionUrl 访问的服务器URL
-     * @param headers 请求头
-     * @param params 普通参数
+     *
+     * @param actionUrl         访问的服务器URL
+     * @param headers           请求头
+     * @param params            普通参数
      * @param fileNameAndStream map<文件名，对应的流>
      * @return
      * @throws IOException
      */
-    public static String uploadWithParms(String actionUrl,Map<String,String> headers, Map<String, String> params,Map<String,InputStream> fileNameAndStream ) {
+    public static String uploadWithParms(String actionUrl, Map<String, String> headers, Map<String, String> params, Map<String, InputStream> fileNameAndStream) {
         //http协议的分隔符
         String BOUNDARY = String.valueOf(System.currentTimeMillis());
         String PREFIX = "--";
@@ -215,6 +243,8 @@ public class HttpUtil {
             conn.setRequestProperty("connection", "keep-alive");
             conn.setRequestProperty("Charsert", "UTF-8");
             conn.setRequestProperty("Content-Type", "multipart/form-data" + ";boundary=" + BOUNDARY);
+            //防止屏蔽程序抓取而返回403错误
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36");
             if (headers != null && headers.size() > 0) {
                 for (Map.Entry<String, String> entry : headers.entrySet()) {
                     conn.setRequestProperty(entry.getKey(), entry.getValue());
@@ -297,5 +327,4 @@ public class HttpUtil {
         }
         return result;
     }
-
 }
