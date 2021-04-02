@@ -1,8 +1,8 @@
 import response.DownloadResponse;
+
 import java.io.*;
 import java.net.*;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class HttpUtil {
@@ -102,12 +102,13 @@ public class HttpUtil {
      */
     public static String fetch(String method, String url, String body, Map<String, String> headers) {
         String response = null;
+        HttpURLConnection conn = null;
         // connection
         try {
             URL u = new URL(url);
-            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-            conn.setConnectTimeout(100000);
-            conn.setReadTimeout(300000);
+            conn = (HttpURLConnection) u.openConnection();
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
             conn.setRequestProperty("Accept", "*/*");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36");
 
@@ -165,6 +166,10 @@ public class HttpUtil {
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
+        }finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
         }
 
         return response;
@@ -173,19 +178,16 @@ public class HttpUtil {
     /**
      * 下载文件
      *
-     * @param url
      * @param headers 请求头
      * @return
      */
-    public static DownloadResponse download(String url, Map<String, String> headers) {
+    public static DownloadResponse download(HttpURLConnection conn, Map<String, String> headers) {
         DownloadResponse downloadResponse = new DownloadResponse();
         try {
-            URL urlObj = new URL(url);
-            HttpURLConnection conn = (HttpURLConnection) urlObj.openConnection();
             conn.setRequestMethod("GET");
             //设置超时间为3秒
-            conn.setConnectTimeout(3 * 1000);
-            conn.setReadTimeout(3 * 1000);
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
             //防止屏蔽程序抓取而返回403错误
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36");
             if (headers != null && headers.size() > 0) {
@@ -194,9 +196,16 @@ public class HttpUtil {
                 }
             }
             if (HttpURLConnection.HTTP_OK == conn.getResponseCode()) {
-                Map<String, List<String>> headerFields = conn.getHeaderFields();
-                for (Map.Entry<String, List<String>> entry : headerFields.entrySet()) {
-                    System.out.println(entry.getKey() + "======" + entry.getValue());
+                String contentType = conn.getHeaderField("Content-Type");
+                if (contentType!=null && !contentType.equals("") && contentType.contains("json")) {
+                    InputStream is = conn.getInputStream();
+                    StringBuffer out = new StringBuffer();
+                    BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        out.append(line);
+                    }
+                    throw new RuntimeException(out.toString());
                 }
                 downloadResponse.setInputStream(conn.getInputStream());
                 //文件名
@@ -231,11 +240,12 @@ public class HttpUtil {
         DataOutputStream outStream = null;
         BufferedReader responseReader = null;
         String result = "";
+        HttpURLConnection conn = null;
         try {
             URL uri = new URL(actionUrl);
-            HttpURLConnection conn = (HttpURLConnection) uri.openConnection();
-            conn.setConnectTimeout(30000);
-            conn.setReadTimeout(30000);
+            conn = (HttpURLConnection) uri.openConnection();
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
             conn.setDoInput(true);// 允许输入
             conn.setDoOutput(true);// 允许输出
             conn.setUseCaches(false); // 不允许使用缓存
@@ -268,7 +278,6 @@ public class HttpUtil {
 
                 outStream.write(param.toString().getBytes());
             }
-
 
             // 发送文件数据
             for (Map.Entry<String, InputStream> entry : fileNameAndStream.entrySet()) {
@@ -319,6 +328,10 @@ public class HttpUtil {
                             responseReader.close();
                         } catch (IOException e) {
                             e.printStackTrace();
+                        }finally {
+                            if (conn != null) {
+                                conn.disconnect();
+                            }
                         }
                     }
                 }
