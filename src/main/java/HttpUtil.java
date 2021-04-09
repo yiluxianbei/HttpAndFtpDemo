@@ -213,6 +213,14 @@ public class HttpUtil {
                 headerField = headerField.substring(headerField.indexOf("filename=") + 9);
                 String fileName = headerField.substring(0, headerField.indexOf(";"));
                 downloadResponse.setFileName(URLDecoder.decode(fileName, "UTF-8"));
+            }else {
+                StringBuffer response = new StringBuffer();
+                String readLine;
+                BufferedReader responseReader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                while ((readLine = responseReader.readLine()) != null) {
+                    response.append(readLine).append("\n");
+                }
+                throw new RuntimeException(response.toString());
             }
         } catch (MalformedURLException e) {
             e.printStackTrace();
@@ -303,16 +311,15 @@ public class HttpUtil {
             outStream.write((PREFIX + BOUNDARY + PREFIX + "\r\n").getBytes());
             outStream.flush();
             int responseCode = conn.getResponseCode();
-            if (HttpURLConnection.HTTP_OK == responseCode) {
-                StringBuffer response = new StringBuffer();
-                String readLine;
-                responseReader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                while ((readLine = responseReader.readLine()) != null) {
-                    response.append(readLine).append("\n");
-                }
-                result = response.toString();
-            } else {
-                result = String.valueOf(responseCode);
+            StringBuffer response = new StringBuffer();
+            String readLine;
+            responseReader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+            while ((readLine = responseReader.readLine()) != null) {
+                response.append(readLine).append("\n");
+            }
+            result = response.toString();
+            if (HttpURLConnection.HTTP_OK != responseCode) {
+                throw new RuntimeException(result);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -340,4 +347,6 @@ public class HttpUtil {
         }
         return result;
     }
+
+
 }
